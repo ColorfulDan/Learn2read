@@ -1,5 +1,5 @@
-// Offline support: cache the app shell, serve cache-first, refresh in background.
-const CACHE = 'learn2read-v1';
+// Offline support: network-first (so updates arrive right away), cache as offline fallback.
+const CACHE = 'learn2read-v2';
 const ASSETS = [
   './', 'index.html', 'manifest.webmanifest',
   'css/styles.css', 'js/app.js', 'js/data.js', 'js/state.js', 'js/audio.js',
@@ -19,11 +19,8 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(cached => {
-    const fresh = fetch(e.request).then(res => {
-      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
-      return res;
-    }).catch(() => cached);
-    return cached || fresh;
-  }));
+  e.respondWith(fetch(e.request).then(res => {
+    if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
+    return res;
+  }).catch(() => caches.match(e.request, { ignoreSearch: true })));
 });

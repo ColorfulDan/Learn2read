@@ -48,7 +48,9 @@ export const Clips = {
 };
 
 let currentAudio = null;
-let speakToken = 0;
+let speakToken = 0; // bumped by stop(): interrupts current speech and any running seq()
+let session = 0;    // bumped by reset() on every screen change: stale promises never resolve,
+                    // so code from a screen the child has left can never speak again
 
 export const Speech = {
   rate: 0.8,
@@ -73,6 +75,17 @@ export const Speech = {
       || this.voices[0];
   },
 
+  reset() { session++; this.stop(); },
+
+  // Run narration steps in order; abort as soon as anything else interrupts (stop()).
+  async seq(...steps) {
+    const token = speakToken;
+    for (const step of steps) {
+      if (token !== speakToken) return;
+      await step();
+    }
+  },
+
   stop() {
     speakToken++;
     if ('speechSynthesis' in window) speechSynthesis.cancel();
@@ -82,9 +95,11 @@ export const Speech = {
   // Speak text; resolves when finished (with a safety timeout, since some
   // Android engines never fire onend).
   say(text, { rate } = {}) {
-    if (!('speechSynthesis' in window)) return Promise.resolve();
+    if (!('speechSynthesis' in window) || document.hidden) return Promise.resolve();
     const token = speakToken;
-    return new Promise(resolve => {
+    const s = session;
+    return new Promise(res => {
+      const resolve = () => { if (s === session) res(); };
       const u = new SpeechSynthesisUtterance(text);
       const v = this.pickVoice();
       if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'en-US'; }
@@ -103,7 +118,10 @@ export const Speech = {
   playClip(key) {
     const url = Clips.cache.get(key);
     if (!url) return null;
-    return new Promise(resolve => {
+    if (document.hidden) return Promise.resolve();
+    const s = session;
+    return new Promise(res => {
+      const resolve = () => { if (s === session) res(); };
       const a = new Audio(url);
       currentAudio = a;
       a.onended = resolve;

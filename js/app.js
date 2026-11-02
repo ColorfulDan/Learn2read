@@ -22,7 +22,13 @@ function h(tag, attrs = {}, ...kids) {
 }
 const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const pick = a => a[Math.floor(Math.random() * a.length)];
-const wait = ms => new Promise(r => setTimeout(r, ms));
+// Every screen gets an id. Timers and waits from a screen the child has left are dropped,
+// so nothing from an old screen can make a sound later.
+let screenId = 0;
+function newScope() { screenId++; Speech.reset(); }
+const wait = ms => { const sid = screenId; return new Promise(r => setTimeout(() => { if (sid === screenId) r(); }, ms)); };
+const later = (fn, ms) => { const sid = screenId; setTimeout(() => { if (sid === screenId) fn(); }, ms); };
+const narrate = (...steps) => Speech.seq(...steps);
 const disp = l => (State.data.settings.upper ? l.toUpperCase() : l);
 const today = () => new Date().toISOString().slice(0, 10);
 const PRAISE = ['Great job!', 'You got it!', 'Super!', 'Yes!', 'Awesome!', 'Well done!', 'Brilliant!'];
@@ -41,7 +47,7 @@ function go(screen, params = {}, replace = false) {
 window.addEventListener('popstate', e => render(e.state || { screen: 'home', params: {} }));
 
 function render({ screen, params }) {
-  Speech.stop();
+  newScope();
   cleanups.forEach(fn => { try { fn(); } catch (e) { /* noop */ } });
   cleanups = [];
   current = { screen, params };
@@ -123,6 +129,7 @@ function finish(id, mistakes) {
   const stars = mistakes <= 1 ? 3 : mistakes <= 3 ? 2 : 1;
   const sticker = State.complete(id, stars);
   const replay = { ...current };
+  newScope();
   $app.innerHTML = '';
   Sfx.fanfare();
   confetti();
@@ -152,7 +159,7 @@ function runQuiz({ id, title, color, rounds, hint }) {
     stage.innerHTML = '';
     const buttons = [];
     const opts = h('div', { class: `options n${r.options.length}` });
-    const replay = () => { Speech.stop(); r.play && r.play(buttons); };
+    const replay = () => { if (locked) return; Speech.stop(); r.play && r.play(buttons); };
     r.options.forEach(o => {
       const b = h('button', { class: 'option ' + (o.cls || '') }, o.label);
       b.addEventListener('click', async () => {
@@ -176,9 +183,7 @@ function runQuiz({ id, title, color, rounds, hint }) {
           Sfx.wrong();
           r.onResult && r.onResult(false, false, o.value);
           setTimeout(() => { b.classList.remove('wrong'); b.classList.add('faded'); }, 600);
-          if (o.say) { await wait(300); await o.say(); }
-          await wait(300);
-          if (r.play && !locked) replay();
+          narrate(() => wait(300), () => o.say && o.say(), () => wait(300), () => { if (r.play && !locked) replay(); });
         }
       });
       buttons.push(b);
@@ -188,7 +193,7 @@ function runQuiz({ id, title, color, rounds, hint }) {
       h('div', { class: 'prompt' }, r.view, r.play && h('button', { class: 'btn-say', 'aria-label': 'Hear again', onclick: replay }, '🔊')),
       hint && h('p', { class: 'hint' }, typeof hint === 'function' ? hint(r) : hint),
       opts);
-    setTimeout(() => { if (!locked) (r.intro && i === 0 ? r.intro(buttons) : r.play && r.play(buttons)); }, 350);
+    later(() => { if (!locked) (r.intro && i === 0 ? r.intro(buttons) : r.play && r.play(buttons)); }, 350);
   }
   next();
 }
@@ -279,8 +284,8 @@ SCREENS.meet = ({ gid }) => {
   $app.append(h('div', { class: 'screen' }, topBar('Meet the sounds', g.color), card, nav));
   async function intro(l) {
     const L = LETTERS[l];
-    await Speech.sound(l); await wait(250); await Speech.sound(l); await wait(300);
-    await Speech.say(L.end ? `you hear it at the end of ${L.key.word}` : `${L.key.word}`);
+    await narrate(() => Speech.sound(l), () => wait(250), () => Speech.sound(l), () => wait(300),
+      () => Speech.say(L.end ? `you hear it at the end of ${L.key.word}` : `${L.key.word}`));
   }
   function show() {
     const l = g.letters[idx];
@@ -289,7 +294,7 @@ SCREENS.meet = ({ gid }) => {
     card.innerHTML = '';
     card.append(
       letterEl,
-      h('button', { class: 'meet-pic', onclick: async () => { Speech.stop(); await Speech.sound(l); await Speech.say(L.key.word); } }, L.key.pic, h('span', {}, L.key.word)),
+      h('button', { class: 'meet-pic', onclick: () => { Speech.stop(); narrate(() => Speech.sound(l), () => Speech.say(L.key.word)); } }, L.key.pic, h('span', {}, L.key.word)),
       h('p', { class: 'hint' }, 'Tap the letter to hear its sound. Say it too!'),
       h('div', { class: 'pager' }, g.letters.map((_, k) => h('span', { class: k === idx ? 'on' : '' }))));
     nav.innerHTML = '';
@@ -299,7 +304,7 @@ SCREENS.meet = ({ gid }) => {
         ? h('button', { class: 'btn', onclick: () => { idx++; show(); } }, 'Next ▶')
         : h('button', { class: 'btn', onclick: () => finish(`g${gid}-meet`, 0) }, 'Done ✔'));
     Speech.stop();
-    setTimeout(() => intro(l), 300);
+    later(() => intro(l), 300);
   }
   show();
 };
@@ -310,7 +315,7 @@ SCREENS.find = ({ gid }) => {
   const nOpts = gid <= 2 ? 3 : 4;
   const rounds = letterTargets(gid, 8).map(t => ({
     view: h('div', { class: 'ear' }, '👂'),
-    intro: async () => { await Speech.say('Find the sound'); await wait(200); await Speech.sound(t); },
+    intro: () => narrate(() => Speech.say('Find the sound'), () => wait(200), () => Speech.sound(t)),
     play: () => Speech.sound(t),
     options: letterOptions(t, gid, nOpts).map(letterOpt),
     answer: t,
@@ -357,7 +362,9 @@ SCREENS.trace = ({ gid }) => {
     canvas.style.width = size + 'px'; canvas.style.height = size + 'px';
     const c = canvas.getContext('2d');
     c.scale(dpr, dpr);
+    const sid = screenId;
     try { await document.fonts.load(`bold ${size * 0.8}px Andika`); } catch (e) { /* noop */ }
+    if (sid !== screenId) return;
     const drawGuide = () => {
       c.clearRect(0, 0, size, size);
       c.fillStyle = '#eef3f8';
@@ -527,7 +534,7 @@ SCREENS.build = () => {
     stage.append(
       h('div', { class: 'prompt' }, h('div', { class: 'pic-prompt' }, w.pic), h('button', { class: 'btn-say', onclick: say }, '🔊')),
       slots, bank);
-    setTimeout(async () => { if (idx === 0) await Speech.say('Build the word'); Speech.word(w.word); }, 300);
+    later(() => narrate(() => idx === 0 && Speech.say('Build the word'), () => Speech.word(w.word)), 300);
   }
   show();
 };
@@ -541,11 +548,10 @@ SCREENS.rhyme = () => {
     const opts = shuffle([b, ...others]);
     return {
       view: h('div', { class: 'rhyme-view' }, h('div', { class: 'pic-prompt' }, a.pic), h('div', { class: 'caption' }, a.word)),
-      play: async btns => {
-        await Speech.say(`What rhymes with ${a.word}?`);
-        for (let k = 0; k < opts.length; k++) {
-          btns[k].classList.add('lit'); await Speech.word(opts[k].word); btns[k].classList.remove('lit'); await wait(150);
-        }
+      play: btns => {
+        btns.forEach(b => b.classList.remove('lit'));
+        return narrate(() => Speech.say(`What rhymes with ${a.word}?`),
+          ...opts.map((o, k) => async () => { btns[k].classList.add('lit'); await Speech.word(o.word); btns[k].classList.remove('lit'); await wait(150); }));
       },
       options: opts.map(x => ({ value: x.word, label: h('span', { class: 'pic' }, x.pic), say: () => Speech.say(`${x.word}… ${a.word}. No rhyme.`) })),
       answer: b.word,
@@ -572,7 +578,7 @@ SCREENS.heartsquiz = () => {
     const others = shuffle([...words, ...fillers].filter(x => x !== t)).slice(0, 2);
     return {
       view: h('div', { class: 'ear' }, '👂'),
-      intro: async () => { await Speech.say('Find the word'); await Speech.word(t); },
+      intro: () => narrate(() => Speech.say('Find the word'), () => Speech.word(t)),
       play: () => Speech.word(t),
       options: shuffle([t, ...others]).map(x => ({ value: x, label: h('span', { class: 'word' }, x), say: () => Speech.word(x) })),
       answer: t,
@@ -609,7 +615,9 @@ SCREENS.story = ({ i }) => {
   const readToMe = async () => {
     Speech.stop();
     const els = [...wordsEl.children];
-    for (const el of els) { el.classList.add('lit'); await Speech.word(el.textContent); el.classList.remove('lit'); }
+    els.forEach(el => el.classList.remove('lit'));
+    await narrate(...els.map(el => async () => { el.classList.add('lit'); await Speech.word(el.textContent); el.classList.remove('lit'); }));
+    els.forEach(el => el.classList.remove('lit'));
   };
   $app.append(h('div', { class: 'screen' }, topBar('Story Time', '#ffc145'),
     h('div', { class: 'story-pic big' }, s.pic),
@@ -723,6 +731,8 @@ async function boot() {
   Speech.voiceURI = State.data.settings.voiceURI;
   Sfx.enabled = State.data.settings.sfx;
   await Clips.load();
+  // Go quiet when the app is hidden (home button, screen off, switching apps).
+  document.addEventListener('visibilitychange', () => { if (document.hidden) Speech.stop(); });
   history.replaceState({ screen: 'home', params: {} }, '');
   render({ screen: 'home', params: {} });
 
