@@ -1,5 +1,9 @@
 // Progress + settings, persisted in localStorage.
-import { GROUPS, WORDS, HEART_WORDS, STORIES, STICKERS, ALL_LETTERS, LETTERS } from './data.js';
+import { GROUPS, WORDS, HEART_WORDS, STORIES, STICKERS, ALL_LETTERS, LETTERS, graphemes } from './data.js';
+
+// Local calendar date (YYYY-MM-DD). Not UTC, which flips to "tomorrow" in the evening in the US.
+export const today = (d = new Date()) => d.toLocaleDateString('en-CA');
+export const DAILY_GOAL = 3;
 
 const KEY = 'learn2read-state-v1';
 
@@ -11,6 +15,8 @@ const DEFAULT = {
   letterStats: {},   // letter -> { right, wrong }
   wordStats: {},     // word -> { right, wrong }
   sessions: [],      // [{ date, minutes }]
+  days: {},          // date -> activities finished that day
+  chestDay: null,    // date the daily treasure was last opened
   settings: { rate: 0.8, voiceURI: null, upper: false, unlockAll: false, sfx: true },
 };
 
@@ -33,6 +39,8 @@ export const State = {
     const prev = this.data.done[id] || 0;
     this.data.done[id] = Math.max(prev, stars);
     this.data.stars += stars;
+    const d = today();
+    this.data.days[d] = (this.data.days[d] || 0) + 1;
     let sticker = null;
     if (!prev || Math.random() < 0.5) {
       const owned = new Set(this.data.stickers);
@@ -44,6 +52,34 @@ export const State = {
     return sticker;
   },
 
+  bonusSticker() {
+    const owned = new Set(this.data.stickers);
+    const pool = STICKERS.filter(s => !owned.has(s));
+    const s = (pool.length ? pool : STICKERS)[Math.floor(Math.random() * (pool.length || STICKERS.length))];
+    this.data.stickers.push(s);
+    this.data.chestDay = today();
+    this.save();
+    return s;
+  },
+
+  // --- Daily goal & streak ---
+  todayCount() { return this.data.days[today()] || 0; },
+  chestReady() { return this.todayCount() >= DAILY_GOAL && this.data.chestDay !== today(); },
+  streak() {
+    const d = new Date();
+    if (!this.data.days[today(d)]) d.setDate(d.getDate() - 1); // today not played yet: count up to yesterday
+    let n = 0;
+    while (this.data.days[today(d)]) { n++; d.setDate(d.getDate() - 1); }
+    return n;
+  },
+  lastDays(n) {
+    const out = [];
+    const d = new Date();
+    d.setDate(d.getDate() - (n - 1));
+    for (let i = 0; i < n; i++) { const k = today(d); out.push({ date: k, count: this.data.days[k] || 0 }); d.setDate(d.getDate() + 1); }
+    return out;
+  },
+
   mark(kind, key, ok) {
     const bucket = kind === 'letter' ? this.data.letterStats : this.data.wordStats;
     const s = bucket[key] || (bucket[key] = { right: 0, wrong: 0 });
@@ -52,7 +88,7 @@ export const State = {
   },
 
   logTime(minutes) {
-    const date = new Date().toISOString().slice(0, 10);
+    const date = today();
     const last = this.data.sessions[this.data.sessions.length - 1];
     if (last && last.date === date) last.minutes += minutes;
     else this.data.sessions.push({ date, minutes });
@@ -76,7 +112,7 @@ export const State = {
   },
 
   decodable(word, learned = this.learnedLetters()) {
-    return word.split('').every(ch => learned.has(ch));
+    return graphemes(word).every(g => learned.has(g));
   },
 
   availableWords() {
@@ -94,6 +130,9 @@ export const State = {
     const hearts = new Set(this.heartWords().map(h => h.word.toLowerCase()));
     return STORIES.map((s, i) => ({ ...s, i, open: s.text.split(' ').every(w => hearts.has(w.toLowerCase()) || this.decodable(w, learned)) }));
   },
+
+  // Longer words (frog, jump) once single letters and the first letter pairs are known.
+  longWordsReady() { return this.data.settings.unlockAll || this.groupsDone() >= 7; },
 
   // Letters with the most mistakes, for the parent dashboard & review weighting.
   trickyLetters() {

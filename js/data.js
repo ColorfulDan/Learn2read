@@ -9,7 +9,22 @@ export const GROUPS = [
   { id: 4, name: 'Group 4', color: '#9bc53d', letters: ['e', 'u', 'r', 'h'] },
   { id: 5, name: 'Group 5', color: '#c879ff', letters: ['b', 'f', 'l', 'j'] },
   { id: 6, name: 'Group 6', color: '#fe5f8f', letters: ['v', 'w', 'x', 'y', 'z', 'q'] },
+  // Two letters, one sound.
+  { id: 7, name: 'Group 7', color: '#ff9f1c', letters: ['sh', 'ch', 'th', 'ng'] },
+  { id: 8, name: 'Group 8', color: '#2ec4b6', letters: ['ck', 'll', 'ss', 'ff'] },
 ];
+
+// Letter pairs that make one sound. Words are split into these "graphemes"
+// for sound buttons, blending and spelling (f-i-sh, not f-i-s-h).
+export const DIGRAPHS = ['sh', 'ch', 'th', 'ng', 'ck', 'll', 'ss', 'ff'];
+export function graphemes(word) {
+  const out = [];
+  for (let i = 0; i < word.length;) {
+    const two = word.slice(i, i + 2).toLowerCase();
+    if (DIGRAPHS.includes(two)) { out.push(two); i += 2; } else { out.push(word[i].toLowerCase()); i++; }
+  }
+  return out;
+}
 
 // tts: what the speech engine says for the pure sound (a fallback; a parent
 // recording in the Grown-ups area always wins). Consonants are kept short
@@ -42,6 +57,14 @@ export const LETTERS = {
   y: { tts: 'yuh', sound: 'y', key: { word: 'yo-yo', pic: '🪀' }, pics: [['yo-yo', '🪀'], ['yak', '🐃'], ['yarn', '🧶']] },
   z: { tts: 'zzz', sound: 'z', key: { word: 'zebra', pic: '🦓' }, pics: [['zebra', '🦓'], ['zero', '0️⃣'], ['zipper', '🤐']] },
   q: { tts: 'kwuh', sound: 'q', key: { word: 'queen', pic: '👸' }, pics: [['queen', '👸'], ['question', '❓'], ['quilt', '🛏️']] },
+  sh: { tts: 'shh', sound: 'sh', key: { word: 'ship', pic: '🚢' }, pics: [['ship', '🚢'], ['shell', '🐚'], ['sheep', '🐑'], ['shoe', '👟']] },
+  ch: { tts: 'chuh', sound: 'ch', key: { word: 'chick', pic: '🐥' }, pics: [['chick', '🐥'], ['cheese', '🧀'], ['chair', '🪑'], ['cherries', '🍒']] },
+  th: { tts: 'th', sound: 'th', key: { word: 'thumb', pic: '👍' }, pics: [['thumb', '👍'], ['three', '3️⃣'], ['thunder', '⛈️']] },
+  ng: { tts: 'ing', sound: 'ng', end: true, key: { word: 'ring', pic: '💍' }, pics: [['ring', '💍'], ['king', '🤴'], ['swing', '🛝'], ['wing', '🪽']] },
+  ck: { tts: 'kuh', sound: 'k', end: true, key: { word: 'duck', pic: '🦆' }, pics: [['duck', '🦆'], ['sock', '🧦'], ['clock', '🕰️'], ['rock', '🪨']] },
+  ll: { tts: 'lll', sound: 'l', end: true, key: { word: 'bell', pic: '🔔' }, pics: [['bell', '🔔'], ['doll', '🪆'], ['hill', '⛰️'], ['shell', '🐚']] },
+  ss: { tts: 'sss', sound: 's', end: true, key: { word: 'dress', pic: '👗' }, pics: [['dress', '👗'], ['kiss', '💋'], ['grass', '🌱']] },
+  ff: { tts: 'fff', sound: 'f', end: true, key: { word: 'puff', pic: '💨' }, pics: [['puff', '💨'], ['cliff', '🏔️'], ['sniff', '👃']] },
 };
 
 // Decodable CVC (and a few VC) words. Each word becomes available once all
@@ -60,6 +83,19 @@ export const WORDS = [
   ['fan', '🪭'], ['fin'], ['fox', '🦊'], ['log', '🪵'], ['leg', '🦵'], ['lip', '👄'], ['jam', '🍓'], ['jet', '✈️'], ['jog', '🏃'],
   ['van', '🚐'], ['vet', '🩺'], ['web', '🕸️'], ['wet', '💧'], ['wig'], ['box', '📦'], ['six', '6️⃣'], ['ox', '🐂'],
   ['yak', '🐃'], ['yes', '👍'], ['zip', '🤐'], ['zap', '⚡'],
+  // sh ch th ng
+  ['ship', '🚢'], ['shop', '🏪'], ['shed'], ['fish', '🐟'], ['dish', '🍽️'], ['shut'], ['rush'], ['cash', '💵'],
+  ['chip', '🍟'], ['chin'], ['chop', '🪓'], ['chat', '💬'], ['rich', '💰'], ['much'],
+  ['thin'], ['moth'], ['bath', '🛁'], ['path', '🛤️'], ['with'], ['then'], ['math', '➕'],
+  ['ring', '💍'], ['king', '🤴'], ['sing', '🎤'], ['wing', '🪽'], ['song', '🎵'], ['long'], ['bang', '💥'],
+  // ck ll ss ff
+  ['duck', '🦆'], ['sock', '🧦'], ['rock', '🪨'], ['kick', '🦶'], ['back'], ['neck', '🦒'], ['pack', '🎒'], ['sick', '🤒'], ['lock', '🔒'],
+  ['bell', '🔔'], ['doll', '🪆'], ['hill', '⛰️'], ['well'], ['fill'], ['kiss', '💋'], ['mess'], ['puff', '💨'], ['off', '📴'],
+  // longer words with two consonants together (unlocked after Group 7)
+  ['frog', '🐸'], ['crab', '🦀'], ['flag', '🚩'], ['drum', '🥁'], ['stop', '🛑'], ['swim', '🏊'], ['spot'], ['plug', '🔌'],
+  ['clap', '👏'], ['sled', '🛷'], ['grin', '😁'], ['trip'], ['step'], ['hand', '✋'], ['tent', '⛺'], ['nest', '🪺'],
+  ['lamp', '💡'], ['milk', '🥛'], ['belt'], ['jump', '🦘'], ['pond'], ['gift', '🎁'], ['sand', '🏖️'], ['desk'], ['help', '🆘'],
+  ['chips', '🍟'], ['shell', '🐚'], ['clock', '🕰️'], ['truck', '🚚'], ['swing', '🛝'], ['dress', '👗'], ['sniff', '👃'], ['cliff', '🏔️'],
 ].map(([word, pic]) => ({ word, pic: pic || null }));
 
 // Rhyme families. Each family's members rhyme; distractors come from other families.
@@ -90,6 +126,8 @@ export const HEART_WORDS = [
   { word: 'he', after: 3 }, { word: 'she', after: 3 }, { word: 'we', after: 3 }, { word: 'me', after: 3 },
   { word: 'my', after: 4 }, { word: 'you', after: 4 }, { word: 'see', after: 4 }, { word: 'was', after: 4 },
   { word: 'said', after: 5 }, { word: 'of', after: 5 }, { word: 'like', after: 5 }, { word: 'here', after: 5 },
+  { word: 'they', after: 6 }, { word: 'are', after: 6 }, { word: 'all', after: 6 },
+  { word: 'come', after: 7 }, { word: 'some', after: 7 }, { word: 'one', after: 7 },
 ];
 
 // Short decodable sentences. A sentence unlocks once every word is either
@@ -115,7 +153,34 @@ export const STORIES = [
   { text: 'my dog is wet', pic: '🐶💧' },
   { text: 'the yak is in the mud', pic: '🐃🟤' },
   { text: 'she has a red hat', pic: '👧🎩' },
+  { text: 'a fish in a dish', pic: '🐟🍽️' },
+  { text: 'the ship is big', pic: '🚢' },
+  { text: 'a chick and a duck', pic: '🐥🦆' },
+  { text: 'I can sing a song', pic: '🎤🎵' },
+  { text: 'the king has a ring', pic: '🤴💍' },
+  { text: 'a duck on a rock', pic: '🦆🪨' },
+  { text: 'the bell is on the hill', pic: '🔔⛰️' },
+  { text: 'a frog on a log', pic: '🐸🪵' },
+  { text: 'the crab can swim', pic: '🦀🏊' },
+  { text: 'I can jump and clap', pic: '🦘👏' },
+  { text: 'a red flag on a hill', pic: '🚩⛰️' },
+  { text: 'we had fish and chips', pic: '🐟🍟' },
 ];
+
+// Clap the Beats: words and their beats (syllables). The beats are only
+// ever spoken, so they are spelled the way they sound.
+export const BEATS = [
+  ['cat', '🐱', ['cat']], ['dog', '🐶', ['dog']], ['sun', '🌞', ['sun']], ['fish', '🐟', ['fish']],
+  ['bee', '🐝', ['bee']], ['car', '🚗', ['car']], ['frog', '🐸', ['frog']], ['cake', '🎂', ['cake']],
+  ['rabbit', '🐰', ['rab', 'bit']], ['pizza', '🍕', ['peet', 'suh']], ['monkey', '🐒', ['mun', 'key']],
+  ['apple', '🍎', ['ap', 'pul']], ['tiger', '🐯', ['tie', 'ger']], ['rocket', '🚀', ['rock', 'it']],
+  ['penguin', '🐧', ['pen', 'gwin']], ['zebra', '🦓', ['zee', 'bruh']], ['popcorn', '🍿', ['pop', 'corn']],
+  ['spider', '🕷️', ['spy', 'der']], ['robot', '🤖', ['roe', 'bot']], ['pencil', '✏️', ['pen', 'sul']],
+  ['banana', '🍌', ['buh', 'nah', 'nuh']], ['elephant', '🐘', ['el', 'uh', 'fant']], ['butterfly', '🦋', ['but', 'ter', 'fly']],
+  ['dinosaur', '🦕', ['dine', 'oh', 'sore']], ['tomato', '🍅', ['tuh', 'may', 'toe']], ['octopus', '🐙', ['ock', 'tuh', 'puss']],
+  ['umbrella', '☂️', ['um', 'brel', 'luh']], ['kangaroo', '🦘', ['kang', 'guh', 'roo']], ['hamburger', '🍔', ['ham', 'bur', 'ger']],
+  ['strawberry', '🍓', ['straw', 'bair', 'ree']],
+].map(([word, pic, beats]) => ({ word, pic, beats }));
 
 // Stickers awarded for finishing activities.
 export const STICKERS = [
@@ -155,4 +220,12 @@ export const TIPS = {
   y: ['Short "y" from yo-yo.', 'y'],
   z: ['Buzz like a bee.', 'zzzz'],
   q: ['"kw" from queen.', 'kw'],
+  sh: ['Finger on your lips, like hushing a baby.', 'shhh'],
+  ch: ['A quick sneeze-train sound. No "uh".', 'ch'],
+  th: ['Tongue between your teeth, blow gently.', 'thhh'],
+  ng: ['The end of "ring". Hum at the back of your nose.', 'ng'],
+  ck: ['The same sound as c and k, whisper only.', 'k (duck)'],
+  ll: ['The same sound as l.', 'llll (bell)'],
+  ss: ['The same sound as s.', 'ssss (dress)'],
+  ff: ['The same sound as f.', 'ffff (puff)'],
 };

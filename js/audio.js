@@ -1,5 +1,5 @@
 // Audio: text-to-speech, parent recordings (IndexedDB), and little sound effects.
-import { LETTERS } from './data.js';
+import { LETTERS, graphemes } from './data.js';
 import { cleanUpBlob } from './recorder.js';
 
 const DB_NAME = 'learn2read-audio';
@@ -153,7 +153,7 @@ export const Speech = {
   // Say each sound of a word, then the whole word: "c - a - t ... cat".
   async blend(word, onStep) {
     const token = speakToken;
-    const letters = word.split('');
+    const letters = graphemes(word);
     for (let i = 0; i < letters.length; i++) {
       if (token !== speakToken) return;
       onStep && onStep(i);
@@ -194,6 +194,18 @@ export const Sfx = {
   correct() { if (!this.enabled) return; tone(660, 0, 0.15); tone(880, 0.1, 0.25); },
   wrong() { if (!this.enabled) return; tone(220, 0, 0.18, 'triangle', 0.12); },
   tap() { if (!this.enabled) return; tone(520, 0, 0.06, 'sine', 0.08); },
+  clap() {
+    if (!this.enabled) return;
+    const c = ac();
+    const len = Math.floor(c.sampleRate * 0.12);
+    const buf = c.createBuffer(1, len, c.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.12));
+    const src = c.createBufferSource();
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1500; f.Q.value = 0.8;
+    const g = c.createGain(); g.gain.value = 0.9;
+    src.buffer = buf; src.connect(f).connect(g).connect(c.destination); src.start();
+  },
   fanfare() {
     if (!this.enabled) return;
     [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.12, 0.3, 'triangle', 0.15));

@@ -1,5 +1,5 @@
-import { GROUPS, LETTERS, RHYMES, ALL_LETTERS, TIPS } from './data.js';
-import { State, sameSound } from './state.js';
+import { GROUPS, LETTERS, RHYMES, ALL_LETTERS, TIPS, BEATS, graphemes } from './data.js';
+import { State, sameSound, today, DAILY_GOAL } from './state.js';
 import { Speech, Sfx, Clips } from './audio.js';
 import { Mic, cleanUp, toWav, drawWave } from './recorder.js';
 
@@ -12,7 +12,7 @@ function h(tag, attrs = {}, ...kids) {
     if (v == null || v === false) continue;
     if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else if (k === 'class') el.className = v;
-    else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k === 'style' && typeof v === 'object') for (const [sk, sv] of Object.entries(v)) { if (sk.startsWith('--')) el.style.setProperty(sk, sv); else el.style[sk] = sv; }
     else el.setAttribute(k, v === true ? '' : v);
   }
   for (const kid of kids.flat(Infinity)) {
@@ -30,8 +30,9 @@ function newScope() { screenId++; Speech.reset(); }
 const wait = ms => { const sid = screenId; return new Promise(r => setTimeout(() => { if (sid === screenId) r(); }, ms)); };
 const later = (fn, ms) => { const sid = screenId; setTimeout(() => { if (sid === screenId) fn(); }, ms); };
 const narrate = (...steps) => Speech.seq(...steps);
-const disp = l => (State.data.settings.upper ? l.toUpperCase() : l);
-const today = () => new Date().toISOString().slice(0, 10);
+// Andika's "f" touches the next one, so "ff" looks like a single letter. A hair space keeps them apart.
+const txt = t => String(t).replace(/ff/gi, m => m[0] + '\u200A' + m[1]);
+const disp = l => txt(State.data.settings.upper ? l.toUpperCase() : l);
 const PRAISE = ['Great job!', 'You got it!', 'Super!', 'Yes!', 'Awesome!', 'Well done!', 'Brilliant!'];
 const MASCOT = '🦉';
 
@@ -82,7 +83,7 @@ function confetti() {
 const ACT_META = {
   meet: { icon: '👋', label: 'Meet the sounds' },
   find: { icon: '👂', label: 'Find the sound' },
-  first: { icon: '🖼️', label: 'First sound' },
+  first: { icon: '🖼️', label: 'Picture sounds' },
   trace: { icon: '✏️', label: 'Trace' },
 };
 function launch(id) {
@@ -99,6 +100,9 @@ const PRACTICE = [
   { id: 'rhyme', icon: '🎵', label: 'Rhyme Time', color: '#c879ff', need: '', open: () => true },
   { id: 'hearts', icon: '❤️', label: 'Heart Words', color: '#fe5f8f', need: 'Finish Group 1', open: () => State.heartWords().length >= 2 },
   { id: 'stories', icon: '📖', label: 'Story Time', color: '#ffc145', need: 'Learn more sounds', open: () => State.availableStories().some(s => s.open) },
+  { id: 'bubbles', icon: '🫧', label: 'Bubble Pop', color: '#4cc9f0', need: 'Meet Group 2 sounds', open: () => State.learnedLetters().size >= 6 },
+  { id: 'clap', icon: '👏', label: 'Clap the Beats', color: '#f77f00', need: '', open: () => true },
+  { id: 'bigsmall', icon: '🔠', label: 'Big & Small', color: '#7b2cbf', need: 'Finish Group 1', open: () => State.groupsDone() >= 1 || State.data.settings.unlockAll },
 ];
 function played(id) { (State.data.played ||= {})[id] = today(); State.save(); }
 
@@ -147,7 +151,7 @@ function finish(id, mistakes) {
 
 // ---------- generic multiple-choice engine ----------
 // round: { view, play(optionButtons), intro(optionButtons), options:[{label,value,say,cls}], answer, after(), onResult(ok) }
-function runQuiz({ id, title, color, rounds, hint }) {
+function runQuiz({ id, title, color, rounds, hint, layout = '' }) {
   let i = 0, mistakes = 0;
   const dots = h('div', { class: 'dots' }, rounds.map(() => h('span', { class: 'dot' })));
   const stage = h('div', { class: 'stage' });
@@ -159,10 +163,10 @@ function runQuiz({ id, title, color, rounds, hint }) {
     let locked = false, firstTry = true;
     stage.innerHTML = '';
     const buttons = [];
-    const opts = h('div', { class: `options n${r.options.length}` });
+    const opts = h('div', { class: `options n${r.options.length} ${layout}` });
     const replay = () => { if (locked) return; Speech.stop(); r.play && r.play(buttons); };
     r.options.forEach(o => {
-      const b = h('button', { class: 'option ' + (o.cls || '') }, o.label);
+      const b = h('button', { class: 'option ' + (o.cls || ''), style: o.style }, o.label);
       b.addEventListener('click', async () => {
         if (locked || b.classList.contains('faded')) return;
         Speech.stop();
@@ -237,6 +241,7 @@ SCREENS.home = () => {
       h('div', { class: 'star-count' }, '⭐ ', State.data.stars),
       h('button', { class: 'icon-btn parent-btn', 'aria-label': 'Grown-ups', onclick: () => go('gate') }, '⚙️')),
     mascotSays(name ? `Hi ${name}! Let's read!` : "Hi! Let's read!"),
+    dailyStrip(),
     h('button', { class: 'play-big', onclick: () => { Sfx.tap(); launch(nu); } },
       h('span', { class: 'play-icon' }, '▶'),
       h('span', {}, h('b', {}, 'Play'), h('small', {}, nl.icon + ' ' + nl.label))),
@@ -252,13 +257,43 @@ SCREENS.home = () => {
         h('span', { class: 'tile-icon' }, '🏅'), h('span', {}, `Stickers (${State.data.stickers.length})`)))));
 };
 
+function dailyStrip() {
+  const n = State.todayCount();
+  const streak = State.streak();
+  const ready = State.chestReady();
+  return h('div', { class: 'daily' },
+    h('div', { class: 'daily-goal' },
+      h('small', {}, 'Today'),
+      h('div', { class: 'goal-dots' }, Array.from({ length: DAILY_GOAL }, (_, k) => h('span', { class: k < n ? 'on' : '' }, k < n ? '⭐' : ''))),
+      h('button', {
+        class: 'chest' + (ready ? ' ready' : '') + (State.data.chestDay === today() ? ' opened' : ''),
+        'aria-label': 'Treasure',
+        onclick: () => ready ? go('chest') : (Sfx.tap(), Speech.say(State.data.chestDay === today() ? 'You opened today\'s treasure! Come back tomorrow!' : `Play ${DAILY_GOAL - n} more to open the treasure!`)),
+      }, State.data.chestDay === today() ? '🎉' : '🎁')),
+    streak > 0 && h('div', { class: 'streak' }, '🔥 ', h('b', {}, streak), h('small', {}, streak === 1 ? 'day' : 'days')));
+}
+
+SCREENS.chest = () => {
+  if (!State.chestReady()) return go('home', {}, true); // e.g. back button: one treasure per day
+  const sticker = State.bonusSticker();
+  Sfx.fanfare(); confetti();
+  $app.append(h('div', { class: 'screen celebrate' },
+    h('div', { class: 'chest-open' }, '🎁'),
+    h('h1', {}, 'Treasure!'),
+    h('div', { class: 'sticker big' }, sticker),
+    h('p', {}, "You finished today's reading goal!"),
+    h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => go('home', {}, true) }, '🏠 Home'))));
+  const name = State.data.childName;
+  Speech.say(`You did your reading today${name ? ', ' + name : ''}! Here is a treasure sticker!`);
+};
+
 SCREENS.letters = () => {
   $app.append(h('div', { class: 'screen' }, topBar('Letter Sounds', '#ff8a5b'),
     h('div', { class: 'group-path' }, GROUPS.map(g => {
       const open = State.groupUnlocked(g.id);
       const nDone = ['meet', 'find', 'first', 'trace'].filter(a => State.isDone(`g${g.id}-${a}`)).length;
       return h('button', { class: 'group-card' + (open ? '' : ' locked'), style: { background: g.color }, onclick: () => open ? go('group', { gid: g.id }) : (Sfx.wrong(), Speech.say('Finish the group before to open this one!')) },
-        h('div', { class: 'group-letters' }, open ? g.letters.map(disp).join(' ') : '🔒'),
+        h('div', { class: 'group-letters' + (g.letters.some(l => l.length > 1) ? ' pairs' : g.letters.length > 4 ? ' many' : '') }, open ? g.letters.map(disp).join(' ') : '🔒'),
         h('div', { class: 'group-progress' }, ['meet', 'find', 'first', 'trace'].map(a => h('span', {}, State.isDone(`g${g.id}-${a}`) ? '⭐' : '◯'))),
         h('small', {}, `${nDone}/4`));
     }))));
@@ -292,7 +327,7 @@ SCREENS.meet = ({ gid }) => {
   function show() {
     const l = g.letters[idx];
     const L = LETTERS[l];
-    const letterEl = h('button', { class: 'meet-letter', style: { color: g.color }, onclick: () => { Speech.stop(); letterEl.classList.remove('pop'); void letterEl.offsetWidth; letterEl.classList.add('pop'); Speech.sound(l); State.mark('letter', l, true); } }, disp(l));
+    const letterEl = h('button', { class: 'meet-letter' + (l.length > 1 ? ' wide' : ''), style: { color: g.color }, onclick: () => { Speech.stop(); letterEl.classList.remove('pop'); void letterEl.offsetWidth; letterEl.classList.add('pop'); Speech.sound(l); State.mark('letter', l, true); } }, disp(l));
     card.innerHTML = '';
     card.append(
       letterEl,
@@ -331,12 +366,14 @@ SCREENS.find = ({ gid }) => {
 SCREENS.first = ({ gid }) => {
   const g = GROUPS[gid - 1];
   const nOpts = gid <= 2 ? 3 : 4;
-  const targets = letterTargets(gid, 8, l => !LETTERS[l].end);
+  const targets = letterTargets(gid, 8);
   const rounds = targets.map(t => {
     const [word, pic] = pick(LETTERS[t].pics);
+    const where = LETTERS[t].end ? 'end' : 'start';
     return {
-      view: h('div', { class: 'pic-prompt' }, pic),
-      intro: async () => { await Speech.say(`What sound does ${word} start with?`); },
+      view: h('div', { class: 'pic-prompt' }, pic, h('div', { class: 'where ' + where }, where === 'end' ? 'END sound' : 'FIRST sound')),
+      intro: () => Speech.say(`What sound does ${word} ${where} with?`),
+      retry: () => narrate(() => Speech.say(`${word}. What sound does it ${where} with?`)),
       play: () => Speech.word(word),
       options: letterOptions(t, gid, nOpts).map(letterOpt),
       answer: t,
@@ -344,7 +381,7 @@ SCREENS.first = ({ gid }) => {
       onResult: ok => State.mark('letter', t, ok),
     };
   });
-  runQuiz({ id: `g${gid}-first`, title: 'First sound', color: g.color, rounds, hint: 'What sound does it start with?' });
+  runQuiz({ id: `g${gid}-first`, title: 'Picture sounds', color: g.color, rounds, hint: r => r.view.querySelector('.where.end') ? 'What sound does it END with?' : 'What sound does it start with?' });
 };
 
 // Trace: finger-trace each letter over a faint guide.
@@ -375,9 +412,10 @@ SCREENS.trace = ({ gid }) => {
       c.strokeStyle = '#cfd8e3'; c.setLineDash([8, 8]); c.lineWidth = 2;
       [0.3, 0.72].forEach(y => { c.beginPath(); c.moveTo(0, size * y); c.lineTo(size, size * y); c.stroke(); });
       c.setLineDash([]);
-      c.font = `bold ${size * 0.8}px Andika, sans-serif`;
+      c.font = `bold ${size * (l.length > 1 ? 0.55 : 0.8)}px Andika, sans-serif`;
       c.textAlign = 'center'; c.textBaseline = 'alphabetic';
       c.fillStyle = '#d5dde8';
+      if ('letterSpacing' in c) c.letterSpacing = l.length > 1 ? '2px' : '0px'; // breaks the ff ligature
       c.fillText(disp(l), size / 2, size * 0.72);
     };
     drawGuide();
@@ -411,10 +449,10 @@ SCREENS.trace = ({ gid }) => {
 };
 
 // Choose practice words, favouring words with the newest letters.
-function practiceWords(n, { needPic = false, maxLen = 3 } = {}) {
-  let words = State.availableWords().filter(w => (!needPic || w.pic) && w.word.length <= maxLen);
+function practiceWords(n, { needPic = false, maxLen = State.longWordsReady() ? 5 : 3 } = {}) {
+  let words = State.availableWords().filter(w => (!needPic || w.pic) && graphemes(w.word).length <= maxLen);
   const newest = GROUPS.filter(g => State.isDone(`g${g.id}-meet`)).pop();
-  const fresh = newest ? words.filter(w => w.word.split('').some(ch => newest.letters.includes(ch))) : [];
+  const fresh = newest ? words.filter(w => graphemes(w.word).some(ch => newest.letters.includes(ch))) : [];
   const tricky = new Set(Object.entries(State.data.wordStats).filter(([, s]) => s.wrong > s.right).map(([w]) => w));
   const pool = shuffle([...shuffle(fresh).slice(0, Math.ceil(n / 2)), ...words.filter(w => tricky.has(w.word)).slice(0, 2), ...shuffle(words)]);
   const seen = new Set();
@@ -422,8 +460,8 @@ function practiceWords(n, { needPic = false, maxLen = 3 } = {}) {
 }
 
 function soundTiles(word, { onTap } = {}) {
-  return h('div', { class: 'tiles-word' }, word.split('').map((ch, k) => {
-    const t = h('button', { class: 'sound-tile', 'data-k': k }, h('span', {}, ch), h('i', { class: 'sound-dot' }));
+  return h('div', { class: 'tiles-word' + (graphemes(word).length > 3 ? ' long' : '') }, graphemes(word).map((ch, k) => {
+    const t = h('button', { class: 'sound-tile' + (ch.length > 1 ? ' pair' : ''), 'data-k': k }, h('span', {}, txt(ch)), h('i', { class: ch.length > 1 ? 'sound-bar' : 'sound-dot' }));
     t.addEventListener('click', () => { Speech.stop(); t.classList.add('lit'); setTimeout(() => t.classList.remove('lit'), 600); Speech.sound(ch); onTap && onTap(k); });
     return t;
   }));
@@ -447,13 +485,13 @@ SCREENS.blend = () => {
     const reveal = h('div', { class: 'reveal' });
     const blendBtn = h('button', { class: 'btn big', disabled: true }, '🐢 ➜ 🐇  Blend it!');
     const nextBtn = h('button', { class: 'btn', style: { display: 'none' }, onclick: () => { dots.children[idx].classList.add('good'); idx++; show(); } }, 'Next ▶');
-    const tiles = soundTiles(w.word, { onTap: k => { tapped.add(k); if (tapped.size === w.word.length) blendBtn.disabled = false; } });
+    const tiles = soundTiles(w.word, { onTap: k => { tapped.add(k); if (tapped.size === graphemes(w.word).length) blendBtn.disabled = false; } });
     blendBtn.addEventListener('click', async () => {
       Speech.stop();
       blendBtn.disabled = true;
       await Speech.blend(w.word, k => lightTile(tiles, k));
       reveal.innerHTML = '';
-      reveal.append(h('div', { class: 'reveal-pic' }, w.pic || '✨'), h('div', { class: 'reveal-word' }, w.word));
+      reveal.append(h('div', { class: 'reveal-pic' }, w.pic || '✨'), h('div', { class: 'reveal-word' }, txt(w.word)));
       Sfx.correct();
       blendBtn.disabled = false;
       nextBtn.style.display = '';
@@ -496,24 +534,25 @@ SCREENS.build = () => {
     if (idx >= words.length) return finish('build', mistakes);
     const w = words[idx];
     let pos = 0, firstTry = true;
+    const parts = graphemes(w.word);
     stage.innerHTML = '';
-    const slots = h('div', { class: 'slots' }, w.word.split('').map(() => h('span', { class: 'slot' })));
-    const extras = shuffle(learned.filter(l => !w.word.includes(l) && !w.word.split('').some(c => sameSound(c, l)))).slice(0, 2);
+    const slots = h('div', { class: 'slots' + (parts.length > 3 ? ' long' : '') }, parts.map(g => h('span', { class: 'slot' + (g.length > 1 ? ' pair' : '') })));
+    const extras = shuffle(learned.filter(l => !parts.includes(l) && !parts.some(c => sameSound(c, l)))).slice(0, parts.length > 3 ? 1 : 2);
     const bank = h('div', { class: 'bank' });
     const say = () => { Speech.stop(); Speech.word(w.word); };
-    shuffle([...w.word.split(''), ...extras]).forEach(ch => {
-      const b = h('button', { class: 'bank-tile' }, ch);
+    shuffle([...parts, ...extras]).forEach(ch => {
+      const b = h('button', { class: 'bank-tile' + (ch.length > 1 ? ' pair' : '') }, txt(ch));
       b.addEventListener('click', async () => {
-        if (b.classList.contains('used') || pos >= w.word.length) return;
+        if (b.classList.contains('used') || pos >= parts.length) return;
         Speech.stop();
-        if (ch === w.word[pos]) {
+        if (ch === parts[pos]) {
           b.classList.add('used');
-          slots.children[pos].textContent = ch;
+          slots.children[pos].textContent = txt(ch);
           slots.children[pos].classList.add('filled');
           pos++;
           Sfx.tap();
           await Speech.sound(ch);
-          if (pos === w.word.length) {
+          if (pos === parts.length) {
             Sfx.correct();
             dots.children[idx].classList.add(firstTry ? 'good' : 'ok');
             State.mark('word', w.word, firstTry);
@@ -583,7 +622,7 @@ SCREENS.heartsquiz = () => {
       view: h('div', { class: 'ear' }, '👂'),
       intro: () => narrate(() => Speech.say('Find the word'), () => Speech.word(t)),
       play: () => Speech.word(t),
-      options: shuffle([t, ...others]).map(x => ({ value: x, label: h('span', { class: 'word' }, x), say: () => Speech.word(x) })),
+      options: shuffle([t, ...others]).map(x => ({ value: x, label: h('span', { class: 'word' }, txt(x)), say: () => Speech.word(x) })),
       answer: t,
       onResult: ok => State.mark('word', t, ok),
     };
@@ -605,7 +644,7 @@ SCREENS.story = ({ i }) => {
   const hearts = new Set(State.heartWords().map(x => x.word.toLowerCase()));
   const wordsEl = h('div', { class: 'sentence' }, s.text.split(' ').map(w => {
     const isHeart = hearts.has(w.toLowerCase());
-    const el = h('button', { class: 'sw' + (isHeart ? ' heart' : '') }, w);
+    const el = h('button', { class: 'sw' + (isHeart ? ' heart' : ''), 'data-w': w }, txt(w));
     el.addEventListener('click', async () => {
       Speech.stop();
       el.classList.add('lit');
@@ -619,7 +658,7 @@ SCREENS.story = ({ i }) => {
     Speech.stop();
     const els = [...wordsEl.children];
     els.forEach(el => el.classList.remove('lit'));
-    await narrate(...els.map(el => async () => { el.classList.add('lit'); await Speech.word(el.textContent); el.classList.remove('lit'); }));
+    await narrate(...els.map(el => async () => { el.classList.add('lit'); await Speech.word(el.dataset.w); el.classList.remove('lit'); }));
     els.forEach(el => el.classList.remove('lit'));
   };
   $app.append(h('div', { class: 'screen' }, topBar('Story Time', '#ffc145'),
@@ -629,6 +668,91 @@ SCREENS.story = ({ i }) => {
     h('div', { class: 'row' },
       h('button', { class: 'btn secondary', onclick: readToMe }, '🔊 Read to me'),
       h('button', { class: 'btn', onclick: () => finish(`story-${i}`, 0) }, '🙌 I read it!'))));
+};
+
+// Bubble Pop: quick mixed review of every sound learned so far.
+SCREENS.bubbles = () => {
+  const learned = [...State.learnedLetters()];
+  const tricky = State.trickyLetters().map(t => t.l).filter(l => learned.includes(l));
+  const targets = [];
+  for (let k = 0; k < 10; k++) {
+    let t;
+    do { t = tricky.length && Math.random() < 0.35 ? pick(tricky) : pick(learned); } while (t === targets[k - 1] && learned.length > 1);
+    targets.push(t);
+  }
+  const n = learned.length >= 12 ? 5 : 4;
+  const colors = ['#4cc9f0', '#f72585', '#b5e48c', '#ffd166', '#c77dff'];
+  const rounds = targets.map(t => {
+    const others = shuffle(learned.filter(l => l !== t && !sameSound(l, t)));
+    const picks = [];
+    for (const l of others) { if (picks.length >= n - 1) break; if (!picks.some(p => sameSound(p, l))) picks.push(l); }
+    return {
+      view: h('div', { class: 'ear' }, '👂'),
+      intro: () => narrate(() => Speech.say('Pop the bubble with this sound'), () => wait(150), () => Speech.sound(t)),
+      play: () => Speech.sound(t),
+      retry: () => narrate(() => Speech.say('Listen'), () => Speech.sound(t), () => wait(150), () => Speech.sound(t)),
+      options: shuffle([t, ...picks]).map((l, k) => ({
+        ...letterOpt(l), cls: 'bubble',
+        style: { '--c': colors[k % colors.length], animationDelay: (-Math.random() * 3).toFixed(2) + 's', animationDuration: (2.6 + Math.random() * 1.6).toFixed(2) + 's' },
+      })),
+      answer: t,
+      onResult: ok => State.mark('letter', t, ok),
+    };
+  });
+  runQuiz({ id: 'bubbles', title: 'Bubble Pop', color: '#4cc9f0', rounds, layout: 'bubbles', hint: 'Pop the bubble that makes the sound!' });
+};
+
+// Clap the Beats: hear a word, count its beats (syllables). A key listening skill for reading.
+SCREENS.clap = () => {
+  const byN = n => shuffle(BEATS.filter(b => b.beats.length === n));
+  const words = shuffle([...byN(1).slice(0, 2), ...byN(2).slice(0, 2), ...byN(3).slice(0, 2)]);
+  const clapIt = (w, el) => narrate(
+    ...w.beats.map((b, k) => async () => {
+      Sfx.clap();
+      if (el) { el.querySelectorAll('.beat').forEach((x, j) => x.classList.toggle('on', j <= k)); }
+      await Speech.say(b, { rate: 0.75 });
+      await wait(120);
+    }),
+    () => wait(200), () => Speech.word(w.word));
+  const rounds = words.map(w => {
+    const beatsEl = h('div', { class: 'beats' }, w.beats.map(() => h('span', { class: 'beat' }, '👏')));
+    return {
+      view: h('div', { class: 'rhyme-view' }, h('div', { class: 'pic-prompt' }, w.pic), h('div', { class: 'caption' }, w.word), beatsEl),
+      intro: () => narrate(() => Speech.say('How many claps?'), () => wait(150), () => Speech.word(w.word)),
+      play: () => Speech.word(w.word),
+      retry: () => narrate(() => Speech.say("Let's clap it slowly"), () => clapIt(w, null), () => { beatsEl.querySelectorAll('.beat').forEach(x => x.classList.remove('on')); }),
+      options: [1, 2, 3].map(k => ({ value: k, label: h('span', { class: 'claps' }, '👏'.repeat(k)), cls: 'clap-opt', say: () => Speech.say(k === 1 ? 'one clap?' : `${k} claps?`) })),
+      answer: w.beats.length,
+      after: () => clapIt(w, beatsEl),
+    };
+  });
+  runQuiz({ id: 'clap', title: 'Clap the Beats', color: '#f77f00', rounds, layout: 'claps-row', hint: 'Say the word and clap along. How many claps?' });
+  Sfx.clap();
+};
+
+// Big & Small: match capital and lowercase letters (books use both).
+SCREENS.bigsmall = () => {
+  const singles = [...State.learnedLetters()].filter(l => l.length === 1);
+  // Prefer letters whose capital looks different (a/A, g/G), not near-twins like s/S or v/V.
+  const SAME_SHAPE = 'cosuvwxzkp';
+  const distinct = singles.filter(l => !SAME_SHAPE.includes(l));
+  const base = distinct.length >= 4 ? distinct : singles;
+  const targets = shuffle(base).concat(shuffle(base)).slice(0, 8);
+  const rounds = targets.map((t, k) => {
+    const bigFirst = k % 2 === 0; // alternate: big -> small, small -> big
+    const others = shuffle(ALL_LETTERS.filter(l => l.length === 1 && l !== t && singles.includes(l))).slice(0, 2);
+    const pool = others.length < 2 ? others.concat(shuffle(ALL_LETTERS.filter(l => l.length === 1 && l !== t && !others.includes(l))).slice(0, 2 - others.length)) : others;
+    const show = l => (bigFirst ? l : l.toUpperCase());
+    return {
+      view: h('div', { class: 'bigsmall-prompt' }, h('span', { class: 'letter' }, bigFirst ? t.toUpperCase() : t)),
+      intro: () => narrate(() => Speech.say(bigFirst ? 'Find the little letter that matches' : 'Find the big letter that matches'), () => wait(150), () => Speech.sound(t)),
+      play: () => Speech.sound(t),
+      options: shuffle([t, ...pool]).map(l => ({ value: l, label: h('span', { class: 'letter' }, show(l)), say: () => Speech.sound(l) })),
+      answer: t,
+      after: () => narrate(() => Speech.say('Big and little, they both say'), () => Speech.sound(t)),
+    };
+  });
+  runQuiz({ id: 'bigsmall', title: 'Big & Small', color: '#7b2cbf', rounds, hint: 'Big and little letters make the same sound.' });
 };
 
 SCREENS.stickers = () => {
@@ -713,9 +837,9 @@ SCREENS.recorder = ({ start = 0 }) => {
       if (idx < ALL_LETTERS.length - 1) { idx++; show(); } else back();
     };
 
-    // c and k make the same sound: offer to reuse the other one's recording.
-    const twin = l === 'k' ? 'c' : l === 'c' ? 'k' : null;
-    const twinBtn = twin && Clips.has('sound:' + twin) && h('button', { class: 'btn small secondary', onclick: async () => {
+    // Letters with the same sound (c/k/ck, l/ll, s/ss, f/ff): offer to reuse a recording.
+    const twin = ALL_LETTERS.find(x => x !== l && sameSound(x, l) && Clips.has('sound:' + x));
+    const twinBtn = twin && h('button', { class: 'btn small secondary', onclick: async () => {
       await Clips.save(key, await Clips.blob('sound:' + twin));
       Sfx.correct(); idx++; show();
     } }, `Use my "${twin}" sound (same sound)`);
@@ -786,10 +910,16 @@ SCREENS.parent = () => {
   $app.append(h('div', { class: 'screen parent' }, topBar('Grown-ups', '#555'),
     h('section', {}, h('h3', {}, 'Progress'),
       h('div', { class: 'kpis' },
-        kpi(learned.size + '/26', 'sounds introduced'),
+        kpi(learned.size + '/' + ALL_LETTERS.length, 'sounds introduced'),
         kpi(State.availableWords().length, 'words decodable'),
         kpi(Math.round(week), 'minutes this week'),
-        kpi(d.stars, 'stars')),
+        kpi(State.streak(), 'day streak')),
+      h('h4', {}, 'Last 14 days (activities finished)'),
+      h('div', { class: 'days-chart' }, State.lastDays(14).map(x => h('div', { class: 'day-col', title: `${x.date}: ${x.count}` },
+        h('small', {}, x.count || ''),
+        h('i', { class: x.count >= DAILY_GOAL ? 'met' : '', style: { height: Math.min(100, x.count * 100 / 6) + '%' } }),
+        h('span', {}, new Date(x.date + 'T12:00').toLocaleDateString('en-US', { weekday: 'narrow' }))))),
+      h('p', { class: 'legend' }, `Green = daily goal met (${DAILY_GOAL}+ activities). About 10 minutes a day works better than one long session.`),
       h('h4', {}, 'Letter-sound accuracy'),
       h('div', { class: 'mastery' }, ALL_LETTERS.map(l => {
         const st = d.letterStats[l];

@@ -18,6 +18,8 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: 'Andika', 'Comic Sans MS', system-ui, sans-serif;
+  font-variant-ligatures: none; /* keep "ff" as two letters, not one joined glyph */
+  font-feature-settings: 'liga' 0, 'clig' 0;
   font-size: 18px;
   user-select: none;
   -webkit-user-select: none;
@@ -78,7 +80,7 @@ button:disabled { opacity: .4; }
 .group-path { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; }
 .group-card { border-radius: var(--radius); padding: 18px 10px; color: #fff; box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .group-card.locked { filter: grayscale(.9); opacity: .55; }
-.group-letters { font-size: 40px; font-weight: 700; letter-spacing: 4px; }
+.group-letters { font-size: 34px; font-weight: 700; letter-spacing: 2px; white-space: nowrap; }
 .group-progress { font-size: 18px; letter-spacing: 2px; }
 .act-list { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
 .act-card { background: var(--card); border-radius: var(--radius); padding: 18px; display: flex; align-items: center; gap: 16px; font-size: 22px; box-shadow: var(--shadow); text-align: left; }
@@ -246,3 +248,63 @@ canvas.wave { width: 100%; height: 70px; background: var(--card); border-radius:
 .rec-chip.cur { outline: 3px solid var(--ink); }
 .parent details { margin-top: 12px; }
 .parent summary { cursor: pointer; font-weight: 700; padding: 6px 0; }
+
+/* ---------- letter pairs (sh, ch, ck…) ---------- */
+.meet-letter.wide { font-size: 140px; width: 300px; }
+.group-letters.pairs { font-size: 24px; letter-spacing: 0; }
+.group-letters.many { font-size: 26px; letter-spacing: 0; }
+.sound-tile.pair { width: 130px; }
+.sound-bar { width: 70%; height: 8px; border-radius: 4px; background: var(--ink); margin-top: 8px; }
+.tiles-word.long .sound-tile { width: 72px; height: 104px; font-size: 56px; }
+.tiles-word.long .sound-tile.pair { width: 104px; }
+.slot.pair { width: 120px; }
+.slots.long .slot { width: 66px; height: 88px; font-size: 52px; }
+.slots.long .slot.pair { width: 100px; }
+.bank-tile.pair { width: 112px; }
+.where { font-size: 15px; font-weight: 700; color: #fff; background: #5bc0eb; border-radius: 999px; padding: 2px 12px; width: max-content; margin: 4px auto 0; letter-spacing: 1px; }
+.where.end { background: var(--bad); }
+
+/* ---------- daily goal ---------- */
+.daily { display: flex; gap: 10px; padding: 0 16px 8px; align-items: stretch; }
+.daily-goal { flex: 1; display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: 18px; padding: 8px 12px; box-shadow: 0 3px 0 rgba(0, 0, 0, .06); }
+.daily-goal small { color: var(--muted); font-weight: 700; }
+.goal-dots { flex: 1; display: flex; gap: 8px; }
+.goal-dots span { width: 34px; height: 34px; border-radius: 50%; background: #eee5d6; display: grid; place-items: center; font-size: 20px; }
+.goal-dots span.on { background: #ffe8a3; }
+.chest { font-size: 34px; background: none; filter: grayscale(.7); opacity: .7; }
+.chest.ready { filter: none; opacity: 1; animation: wiggle 1s ease-in-out infinite; }
+.chest.opened { filter: none; opacity: 1; }
+.streak { background: #fff1e0; border-radius: 18px; padding: 6px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 18px; line-height: 1.1; }
+.streak b { font-size: 22px; }
+.streak small { color: var(--muted); font-size: 12px; }
+.chest-open { font-size: 110px; animation: pop .6s ease; }
+@keyframes wiggle { 25% { transform: rotate(-12deg) scale(1.1); } 75% { transform: rotate(12deg) scale(1.1); } }
+.days-chart { display: grid; grid-template-columns: repeat(14, 1fr); gap: 4px; height: 110px; align-items: end; }
+.day-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+.day-col i { width: 100%; background: #f2c14e; border-radius: 4px 4px 0 0; min-height: 2px; }
+.day-col i.met { background: var(--good); }
+.day-col small { font-size: 10px; color: var(--muted); }
+.day-col span { font-size: 11px; color: var(--muted); }
+
+/* ---------- Bubble Pop ---------- */
+.options.bubbles { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px 10px; padding-top: 10px; }
+.option.bubble {
+  width: 104px; height: 104px; aspect-ratio: auto; border-radius: 50%;
+  background: radial-gradient(circle at 30% 28%, rgba(255, 255, 255, .95) 0 12%, transparent 13%), radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--c) 35%, white), var(--c));
+  box-shadow: inset -6px -8px 0 rgba(0, 0, 0, .08), 0 6px 14px rgba(0, 0, 0, .12);
+  animation-name: drift; animation-iteration-count: infinite; animation-direction: alternate; animation-timing-function: ease-in-out;
+}
+.option.bubble .letter { font-size: 56px; color: #1d1d35; }
+.option.bubble.right { animation: popbubble .45s ease forwards; background: radial-gradient(circle, #fff, var(--c)); }
+.option.bubble.faded { opacity: .25; }
+@keyframes drift { from { transform: translateY(-10px) rotate(-4deg); } to { transform: translateY(12px) rotate(4deg); } }
+@keyframes popbubble { 60% { transform: scale(1.35); opacity: .8; } 100% { transform: scale(1.6); opacity: 0; } }
+
+/* ---------- Clap the Beats & Big/Small ---------- */
+.beats { display: flex; gap: 6px; justify-content: center; min-height: 44px; }
+.beat { font-size: 34px; opacity: .15; transition: opacity .15s, transform .15s; }
+.beat.on { opacity: 1; transform: scale(1.2); }
+.options.claps-row { grid-template-columns: 1fr; max-width: 360px; }
+.option.clap-opt { aspect-ratio: auto; padding: 14px; }
+.claps { font-size: 46px; letter-spacing: 4px; }
+.bigsmall-prompt .letter { font-size: 150px; font-weight: 700; line-height: 1; color: #7b2cbf; }
