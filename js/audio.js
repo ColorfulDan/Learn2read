@@ -1,5 +1,6 @@
 // Audio: text-to-speech, parent recordings (IndexedDB), and little sound effects.
 import { LETTERS } from './data.js';
+import { cleanUpBlob } from './recorder.js';
 
 const DB_NAME = 'learn2read-audio';
 const STORE = 'clips';
@@ -29,12 +30,19 @@ export const Clips = {
     try {
       const keys = await dbOp('readonly', s => s.getAllKeys());
       for (const k of keys || []) {
-        const blob = await dbOp('readonly', s => s.get(k));
-        if (blob) this.cache.set(k, URL.createObjectURL(blob));
+        let blob = await dbOp('readonly', s => s.get(k));
+        if (!blob) continue;
+        // Older recordings (before the guided recorder): trim silence + level volume once.
+        if (blob.type !== 'audio/wav') {
+          const fixed = await cleanUpBlob(blob);
+          if (fixed) { blob = fixed; await dbOp('readwrite', s => s.put(blob, k)); }
+        }
+        this.cache.set(k, URL.createObjectURL(blob));
       }
     } catch (e) { console.warn('clip load failed', e); }
   },
   has(key) { return this.cache.has(key); },
+  async blob(key) { const u = this.cache.get(key); return u ? (await fetch(u)).blob() : null; },
   async save(key, blob) {
     await dbOp('readwrite', s => s.put(blob, key));
     if (this.cache.has(key)) URL.revokeObjectURL(this.cache.get(key));
@@ -191,23 +199,3 @@ export const Sfx = {
     [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.12, 0.3, 'triangle', 0.15));
   },
 };
-
-// --- Recording (parent voice) ---
-export async function recordClip(maxMs = 2500) {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const rec = new MediaRecorder(stream);
-  const chunks = [];
-  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
-  const stopped = new Promise(r => (rec.onstop = r));
-  rec.start();
-  const stop = () => rec.state !== 'inactive' && rec.stop();
-  const timer = setTimeout(stop, maxMs);
-  return {
-    stop,
-    done: stopped.then(() => {
-      clearTimeout(timer);
-      stream.getTracks().forEach(t => t.stop());
-      return new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
-    }),
-  };
-}

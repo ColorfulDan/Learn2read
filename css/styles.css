@@ -224,3 +224,25 @@ canvas.trace { border-radius: 30px; box-shadow: var(--shadow); touch-action: non
   .option .letter { font-size: 64px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+
+/* ---------- guided recorder ---------- */
+.recorder { padding: 16px; display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
+.rec-progress { text-align: center; color: var(--muted); }
+.rec-head { display: flex; gap: 16px; align-items: center; background: var(--card); border-radius: 18px; padding: 14px; box-shadow: 0 3px 0 rgba(0, 0, 0, .06); }
+.rec-big-letter { font-size: 96px; font-weight: 700; line-height: 1; width: 100px; text-align: center; color: var(--accent); flex: none; }
+.rec-say { font-size: 22px; margin-bottom: 4px; }
+.rec-tip { color: var(--muted); margin-bottom: 8px; }
+.meter { height: 10px; background: #e5e1d8; border-radius: 999px; overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #3bb273, #f2c14e 70%, #e4572e); transition: width .05s; }
+.rec-big { align-self: center; width: 150px; height: 150px; border-radius: 50%; background: var(--bad); color: #fff; box-shadow: 0 6px 0 #9c2f12; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; touch-action: none; -webkit-touch-callout: none; }
+.rec-big span { font-size: 52px; }
+.rec-big small { font-size: 13px; padding: 0 10px; }
+.rec-big.on { transform: scale(1.08); box-shadow: 0 0 0 12px rgba(228, 87, 46, .25); }
+canvas.wave { width: 100%; height: 70px; background: var(--card); border-radius: 12px; }
+.rec-msg { text-align: center; margin: 0; min-height: 2.6em; }
+.rec-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.rec-chip { width: 36px; height: 36px; border-radius: 10px; background: #eee; font-weight: 700; font-size: 18px; }
+.rec-chip.done { background: #c9f2d9; color: #1f7a5c; }
+.rec-chip.cur { outline: 3px solid var(--ink); }
+.parent details { margin-top: 12px; }
+.parent summary { cursor: pointer; font-weight: 700; padding: 6px 0; }

@@ -1,6 +1,7 @@
-import { GROUPS, LETTERS, RHYMES, ALL_LETTERS } from './data.js';
+import { GROUPS, LETTERS, RHYMES, ALL_LETTERS, TIPS } from './data.js';
 import { State, sameSound } from './state.js';
-import { Speech, Sfx, Clips, recordClip } from './audio.js';
+import { Speech, Sfx, Clips } from './audio.js';
+import { Mic, cleanUp, toWav, drawWave } from './recorder.js';
 
 const $app = document.getElementById('app');
 
@@ -183,7 +184,7 @@ function runQuiz({ id, title, color, rounds, hint }) {
           Sfx.wrong();
           r.onResult && r.onResult(false, false, o.value);
           setTimeout(() => { b.classList.remove('wrong'); b.classList.add('faded'); }, 600);
-          narrate(() => wait(300), () => o.say && o.say(), () => wait(300), () => { if (r.play && !locked) replay(); });
+          narrate(() => wait(300), () => o.say && o.say(), () => wait(400), () => { if (locked) return; if (r.retry) { Speech.stop(); r.retry(); } else if (r.play) replay(); });
         }
       });
       buttons.push(b);
@@ -220,7 +221,8 @@ function letterOptions(target, gid, n) {
   for (const l of [...pool, ...extra]) { if (picks.length >= n - 1) break; if (!picks.some(p => sameSound(p, l))) picks.push(l); }
   return shuffle([target, ...picks]);
 }
-const letterOpt = l => ({ value: l, label: h('span', { class: 'letter' }, disp(l)), say: () => Speech.sound(l) });
+// After a wrong tap, say that letter's sound with its keyword ("mmm… moon") to contrast it with the target.
+const letterOpt = l => ({ value: l, label: h('span', { class: 'letter' }, disp(l)), say: () => Speech.seq(() => Speech.sound(l), () => wait(150), () => Speech.say(LETTERS[l].key.word)) });
 
 // ---------- screens ----------
 const SCREENS = {};
@@ -317,6 +319,7 @@ SCREENS.find = ({ gid }) => {
     view: h('div', { class: 'ear' }, '👂'),
     intro: () => narrate(() => Speech.say('Find the sound'), () => wait(200), () => Speech.sound(t)),
     play: () => Speech.sound(t),
+    retry: () => narrate(() => Speech.say('Listen'), () => Speech.sound(t), () => wait(150), () => Speech.sound(t)),
     options: letterOptions(t, gid, nOpts).map(letterOpt),
     answer: t,
     onResult: ok => State.mark('letter', t, ok),
@@ -635,6 +638,113 @@ SCREENS.stickers = () => {
       : mascotSays('Play games to earn stickers!')));
 };
 
+// ---------- Guided recorder (Grown-ups) ----------
+SCREENS.recorder = ({ start = 0 }) => {
+  let idx = start;
+  const mic = new Mic();
+  let micErr = null;
+  const micReady = mic.open().catch(e => { micErr = e; });
+  let player = null;
+  const stopPlayer = () => { if (player) { player.pause(); player = null; } };
+  onLeave(() => { stopPlayer(); mic.close(); });
+  let meterFill = null, raf = 0;
+  const meter = () => { if (meterFill) meterFill.style.width = Math.min(100, Math.sqrt(mic.level) * 140) + '%'; raf = requestAnimationFrame(meter); };
+  raf = requestAnimationFrame(meter);
+  onLeave(() => cancelAnimationFrame(raf));
+
+  const body = h('div', { class: 'recorder' });
+  $app.append(h('div', { class: 'screen parent' }, topBar('Record sounds', '#555'), body));
+
+  const play = url => { stopPlayer(); Speech.stop(); player = new Audio(url); player.play().catch(() => {}); };
+
+  function show() {
+    const l = ALL_LETTERS[idx];
+    const L = LETTERS[l];
+    const [tip, say] = TIPS[l];
+    const key = 'sound:' + l;
+    let pending = null, pendingUrl = null, held = false;
+    stopPlayer();
+    body.innerHTML = '';
+
+    const msg = h('p', { class: 'rec-msg' }, Clips.has(key) ? 'You already recorded this one. Record again to replace it, or tap Next.' : 'Press and hold the button, say the sound, then let go.');
+    const wave = h('canvas', { class: 'wave' });
+    meterFill = h('i');
+    const keepBtn = h('button', { class: 'btn', disabled: true }, '✔ Keep');
+    const hearBtn = h('button', { class: 'btn secondary', disabled: !Clips.has(key) }, '▶ Play');
+    const recBtn = h('button', { class: 'rec-big' }, h('span', {}, '🎙️'), h('small', {}, 'Hold to record'));
+
+    hearBtn.onclick = () => play(pendingUrl || Clips.cache.get(key));
+    recBtn.addEventListener('contextmenu', e => e.preventDefault());
+    recBtn.addEventListener('pointerdown', async e => {
+      e.preventDefault();
+      held = true;
+      try { recBtn.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+      stopPlayer(); Speech.stop();
+      await micReady;
+      if (micErr) { msg.textContent = 'Microphone not available: ' + micErr.message + '. Allow microphone access for this site in Chrome settings.'; return; }
+      if (!held) return;
+      recBtn.classList.add('on');
+      recBtn.querySelector('small').textContent = 'Recording… let go when done';
+      const { samples, rate } = await mic.start();
+      recBtn.classList.remove('on');
+      recBtn.querySelector('small').textContent = 'Hold to record';
+      const r = cleanUp(samples, rate);
+      if (r.error) {
+        msg.textContent = "Didn't catch a sound. Hold the button down, say the sound a little louder, then let go.";
+        Sfx.wrong();
+        return;
+      }
+      pending = r;
+      if (pendingUrl) URL.revokeObjectURL(pendingUrl);
+      pendingUrl = URL.createObjectURL(toWav(r.samples, r.rate));
+      drawWave(wave, r.samples);
+      msg.textContent = `Got it (${(r.samples.length / r.rate).toFixed(1)}s). Listen. Does it sound like "${say}"? Keep it, or hold the button to try again.`;
+      keepBtn.disabled = false; hearBtn.disabled = false;
+      play(pendingUrl);
+    });
+    const release = () => { held = false; if (mic.recording) mic.stop(); };
+    recBtn.addEventListener('pointerup', release);
+    recBtn.addEventListener('pointercancel', release);
+    recBtn.addEventListener('lostpointercapture', release);
+
+    keepBtn.onclick = async () => {
+      await Clips.save(key, toWav(pending.samples, pending.rate));
+      Sfx.correct();
+      if (idx < ALL_LETTERS.length - 1) { idx++; show(); } else back();
+    };
+
+    // c and k make the same sound: offer to reuse the other one's recording.
+    const twin = l === 'k' ? 'c' : l === 'c' ? 'k' : null;
+    const twinBtn = twin && Clips.has('sound:' + twin) && h('button', { class: 'btn small secondary', onclick: async () => {
+      await Clips.save(key, await Clips.blob('sound:' + twin));
+      Sfx.correct(); idx++; show();
+    } }, `Use my "${twin}" sound (same sound)`);
+
+    body.append(
+      h('div', { class: 'rec-progress' }, `${idx + 1} of ${ALL_LETTERS.length}`),
+      h('div', { class: 'rec-head' },
+        h('div', { class: 'rec-big-letter' }, l),
+        h('div', {},
+          h('div', { class: 'rec-say' }, 'Say: ', h('b', {}, say)),
+          h('div', { class: 'rec-tip' }, tip),
+          h('button', { class: 'btn small secondary', onclick: () => { stopPlayer(); Speech.stop(); Speech.say(`${L.key.word}. ${L.end ? 'The sound at the end.' : 'Just the first sound.'}`); } }, `🔊 ${L.key.pic} "${L.key.word}"`))),
+      h('div', { class: 'meter' }, meterFill),
+      recBtn,
+      wave,
+      msg,
+      h('div', { class: 'row' }, hearBtn, keepBtn),
+      twinBtn || '',
+      h('div', { class: 'row' },
+        h('button', { class: 'btn small secondary', disabled: idx === 0, onclick: () => { idx--; show(); } }, '◀ Back'),
+        h('button', { class: 'btn small secondary', onclick: () => { if (idx < ALL_LETTERS.length - 1) { idx++; show(); } else back(); } }, 'Next ▶')),
+      h('div', { class: 'rec-chips' }, ALL_LETTERS.map((x, k) => h('button', {
+        class: 'rec-chip' + (Clips.has('sound:' + x) ? ' done' : '') + (k === idx ? ' cur' : ''),
+        onclick: () => { idx = k; show(); },
+      }, x))));
+  }
+  show();
+};
+
 // ---------- Grown-ups area ----------
 SCREENS.gate = () => {
   const a = 3 + Math.floor(Math.random() * 6), b = 4 + Math.floor(Math.random() * 5);
@@ -661,29 +771,14 @@ SCREENS.parent = () => {
     h('span', {}, label),
     h('input', { type: 'checkbox', checked: !!s[key], onchange: e => { s[key] = e.target.checked; State.save(); after && after(); } }));
 
-  const recRows = ALL_LETTERS.map(l => {
-    const status = h('span', { class: 'rec-status' }, Clips.has('sound:' + l) ? '🎙️ yours' : '🤖 phone');
-    const recBtn = h('button', { class: 'btn small' }, '● Rec');
-    let rec = null;
-    const resetBtn = () => { rec = null; recBtn.textContent = '● Rec'; recBtn.classList.remove('recording'); };
-    recBtn.addEventListener('click', async () => {
-      if (rec) { rec.stop(); return; }
-      try {
-        Speech.stop();
-        recBtn.textContent = '■ Stop'; recBtn.classList.add('recording');
-        rec = await recordClip(2000);
-        const blob = await rec.done;
-        resetBtn();
-        await Clips.save('sound:' + l, blob);
-        status.textContent = '🎙️ yours';
-        Speech.sound(l);
-      } catch (e) { resetBtn(); alert('Microphone not available: ' + e.message); }
-    });
+  const nRec = ALL_LETTERS.filter(l => Clips.has('sound:' + l)).length;
+  const recRows = ALL_LETTERS.map((l, k) => {
+    const mine = Clips.has('sound:' + l);
     return h('div', { class: 'rec-row' },
-      h('b', { class: 'rec-letter' }, l), h('small', {}, LETTERS[l].key.word), status,
-      h('button', { class: 'btn small secondary', onclick: () => { Speech.stop(); Speech.sound(l); } }, '▶'),
-      recBtn,
-      h('button', { class: 'btn small secondary', onclick: async () => { await Clips.remove('sound:' + l); status.textContent = '🤖 phone'; } }, '✕'));
+      h('b', { class: 'rec-letter' }, l), h('small', {}, LETTERS[l].key.word),
+      h('span', { class: 'rec-status' }, mine ? '🎙️ yours' : '🤖 phone voice'),
+      h('button', { class: 'btn small secondary', 'aria-label': 'Play', onclick: () => { Speech.stop(); Speech.sound(l); } }, '▶'),
+      h('button', { class: 'btn small', onclick: () => go('recorder', { start: k }) }, mine ? 'Redo' : 'Record'));
   });
 
   const nameInput = h('input', { type: 'text', value: d.childName, placeholder: "Child's name", onchange: e => { d.childName = e.target.value.trim(); State.save(); } });
@@ -715,9 +810,10 @@ SCREENS.parent = () => {
       toggle('sfx', 'Sound effects', () => { Sfx.enabled = s.sfx; }),
       toggle('unlockAll', 'Unlock everything (skip ahead)')),
 
-    h('section', {}, h('h3', {}, 'Record letter sounds (recommended)'),
-      h('p', { class: 'small' }, 'Phone voices can say letter sounds oddly. Record yourself saying each pure sound, short and clipped: "mmm" not "muh", "t" not "tuh". Your recording replaces the phone voice everywhere.'),
-      h('div', { class: 'rec-list' }, recRows)),
+    h('section', {}, h('h3', {}, `Letter sounds in your voice (${nRec}/26)`),
+      h('p', { class: 'small' }, 'Phone voices say letter sounds poorly. The guided recorder walks you through each sound with a tip, trims the silence and evens out the volume. Find a quiet spot and hold the phone about a hand-width from your mouth.'),
+      h('button', { class: 'btn', onclick: () => go('recorder', { start: Math.max(0, ALL_LETTERS.findIndex(l => !Clips.has('sound:' + l))) }) }, nRec ? '🎙️ Continue recording' : '🎙️ Start guided recording'),
+      h('details', {}, h('summary', {}, 'All sounds'), h('div', { class: 'rec-list' }, recRows))),
 
     h('section', {}, h('h3', {}, 'Data'),
       h('button', { class: 'btn secondary', onclick: () => { if (confirm('Reset all progress, stars and stickers? Recordings and settings are kept.')) { State.reset(); go('home', {}, true); } } }, 'Reset progress'))));

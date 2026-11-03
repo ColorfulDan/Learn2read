@@ -125,3 +125,34 @@ export const STICKERS = [
 ];
 
 export const ALL_LETTERS = GROUPS.flatMap(g => g.letters);
+
+// Coaching for grown-ups recording the letter sounds. Keep every sound
+// short and "pure": no "uh" on the end (say /m/ not "muh").
+export const TIPS = {
+  s: ['Hiss like a snake. Hold it.', 'sssss'],
+  a: ['Short "a" from apple. Open your mouth wide.', 'a (apple)'],
+  t: ['Quick tongue tap, whisper only. No "uh".', 't'],
+  p: ['Pop your lips, whisper only. No "uh".', 'p'],
+  i: ['Short "i" from insect.', 'i (insect)'],
+  n: ['Tongue up, hum through your nose.', 'nnnn'],
+  m: ['Lips together, hum.', 'mmmm'],
+  d: ['Quick tongue tap with your voice. Keep it short.', 'd'],
+  g: ['Short sound from the back of your throat, like goat.', 'g'],
+  o: ['Short "o" from octopus. Mouth round and open.', 'o (octopus)'],
+  c: ['Short click from the back of the throat, whisper only.', 'k (cat)'],
+  k: ['Same sound as c, whisper only.', 'k (kite)'],
+  e: ['Short "e" from egg.', 'e (egg)'],
+  u: ['Short "u" from umbrella.', 'u (umbrella)'],
+  r: ['Growl like a puppy. No "uh".', 'rrrr'],
+  h: ['Breathe out like fogging a window. No voice.', 'h'],
+  b: ['Lips pop with your voice. Keep it short.', 'b'],
+  f: ['Top teeth on bottom lip, blow.', 'ffff'],
+  l: ['Tongue behind your top teeth, sing it.', 'llll'],
+  j: ['Short "j" from jellyfish.', 'j'],
+  v: ['Like f, but buzz with your voice.', 'vvvv'],
+  w: ['Round your lips like a kiss, quick.', 'w'],
+  x: ['The "ks" at the end of fox.', 'ks'],
+  y: ['Short "y" from yo-yo.', 'y'],
+  z: ['Buzz like a bee.', 'zzzz'],
+  q: ['"kw" from queen.', 'kw'],
+};

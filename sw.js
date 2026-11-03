@@ -1,8 +1,8 @@
 // Offline support: network-first (so updates arrive right away), cache as offline fallback.
-const CACHE = 'learn2read-v2';
+const CACHE = 'learn2read-v3';
 const ASSETS = [
   './', 'index.html', 'manifest.webmanifest',
-  'css/styles.css', 'js/app.js', 'js/data.js', 'js/state.js', 'js/audio.js',
+  'css/styles.css', 'js/app.js', 'js/data.js', 'js/state.js', 'js/audio.js', 'js/recorder.js',
   'fonts/Andika-Regular.woff2', 'fonts/Andika-Bold.woff2',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-512-maskable.png',
 ];
